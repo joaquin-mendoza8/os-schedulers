@@ -381,6 +381,14 @@ void rr(RL* rl, Process** processes, int num_processes, int quantum) {
     int time = 0;
     int completed = 0;
 
+    // vars for gantt
+    int gantt_size = num_processes * 6;
+    int gantt_pid[gantt_size];  // track pids in timeline
+    int gantt_start[gantt_size];    // track pid local start
+    int gantt_end[gantt_size];  // track pid local end
+    int gantt_i = 0;
+    bool gantt_idle = false;    // flag to detect if idle occurs
+
     // loop until all processes finished
     while (completed < num_processes) {
 
@@ -395,58 +403,105 @@ void rr(RL* rl, Process** processes, int num_processes, int quantum) {
                 // mark process as visited
                 processes[i]->visited = true;
             }
+        }
 
-            // handle process if RL not empty
-            if (!isEmpty(rl)) {
+        // handle process if RL not empty
+        if (!isEmpty(rl)) {
 
-                // get next node from ready list
-                Process* p = removeNode(rl);
+            // wrap update gantt idle
+            if (gantt_idle) {
+                gantt_end[gantt_i++] = time;
+                gantt_idle = false;
+            }
 
-                // check if process can run through quantum length
-                if (p->remaining > quantum) {
+            // get next node from ready list
+            Process* p = removeNode(rl);
 
-                    printf("Process %d ran from %d to %d\n", p->pid, time, time + quantum);
+            // check if process can run through quantum length
+            if (p->remaining > quantum) {
 
-                    // update time
-                    time += quantum;
+                // printf("Process %d ran from %d to %d\n", p->pid, time, time + quantum);
 
-                    // update process's remaining time
-                    p->remaining -= quantum;
+                // update gantt start/pid
+                gantt_start[gantt_i] = time;
+                gantt_pid[gantt_i] = p->pid;
 
-                    // add all nodes that became available between quantum change
-                    addAllNodesRR(rl, processes, num_processes, time, p->pid);
+                // update time
+                time += quantum;
 
-                    // put process back into ready list
-                    addNodeRR(rl, p);
+                // update gantt end
 
-                // process has less remaining time than quantum
+                // aggregate to long run
+                if (gantt_i != 0 && gantt_pid[gantt_i - 1] == p->pid) {
+
+                    // update prev gantt entry's end time to now
+                    gantt_end[gantt_i - 1] = time;
+
                 } else {
-
-                    // update time by remaining time
-                    time += p->remaining;
-
-                    // update process's remaining time
-                    p->remaining = 0;
-
-                    completed++;
-
-                    p->complete = time;
-
-                    // compute turnaround and waiting times
-                    p->turnaround = p->complete - p->arrival;
-                    p->waiting = p->turnaround - p->burst;
-
-                    printf("Process %d completed at time %d\n", p->pid, time);
-
+                    gantt_end[gantt_i++] = time;   
                 }
 
-            // run idle
+                // update process's remaining time
+                p->remaining -= quantum;
+
+                // add all nodes that became available between quantum change
+                addAllNodesRR(rl, processes, num_processes, time, p->pid);
+
+                // put process back into ready list
+                addNodeRR(rl, p);
+
+            // process has less remaining time than quantum
             } else {
 
-                time++;
-                printf("Idle\n");
+                // update gantt start/pid
+                gantt_start[gantt_i] = time;
+                gantt_pid[gantt_i] = p->pid;
+
+                // update time by remaining time
+                time += p->remaining;
+
+                // update gantt end
+
+                // aggregate to long run
+                if (gantt_i != 0 && gantt_pid[gantt_i - 1] == p->pid) {
+
+                    // update prev gantt entry's end time to now
+                    gantt_end[gantt_i - 1] = time;
+                    
+                } else {
+                    gantt_end[gantt_i++] = time;   
+                }
+
+                // update process's remaining time
+                p->remaining = 0;
+
+                completed++;
+
+                p->complete = time;
+
+                // compute turnaround and waiting times
+                p->turnaround = p->complete - p->arrival;
+                p->waiting = p->turnaround - p->burst;
+
+                // printf("Process %d completed at time %d\n", p->pid, time);
 
             }
+
+        // run idle
+        } else {
+
+            // update gantt start/pid (idle = -1)
+            if (!gantt_idle) {
+                gantt_start[gantt_i] = time;
+                gantt_pid[gantt_i] = -1;
+            }
+
+            // toggle gantt idle flag
+            gantt_idle = true;
+
+            time++;
+
+            // printf("Idle\n");
 
         }
     }
@@ -462,26 +517,17 @@ void rr(RL* rl, Process** processes, int num_processes, int quantum) {
     printf("\n");
 
     // print gantt chart
-    // printf("Gantt Chart:\n");
-    // for (int i = 0; i < gantt_i; i++) {
+    printf("Gantt Chart:\n");
+    for (int i = 0; i < gantt_i; i++) {
 
-    //     // print idle time or process lifecycle
-    //     if (gantt_pid[i] == -1) {
-
-    //         int prev_complete;
-
-    //         // set previously completed process
-    //         if (i > 0) {
-    //             prev_complete = processes[i-1]->complete;
-    //         } else {
-    //             prev_complete = 0;
-    //         }
-            
-    //         printf("[  %d  ]-----\tIDLE\t-----[  %d  ]\n", gantt_start[i], gantt_end[i]);    
-    //     }
-    //     printf("[  %d  ]-----\t%d\t-----[  %d  ]\n", gantt_start[i], gantt_pid[i], gantt_end[i]);
-    // }
-    // printf("\n");
+        // print idle time or process lifecycle
+        if (gantt_pid[i] == -1) {
+            printf("[  %d  ]-----\tIDLE\t-----[  %d  ]\n", gantt_start[i], gantt_end[i]);    
+        } else {
+            printf("[  %d  ]-----\t%d\t-----[  %d  ]\n", gantt_start[i], gantt_pid[i], gantt_end[i]);
+        }
+    }
+    printf("\n");
 
 
     // vars for time stats
@@ -633,8 +679,6 @@ void addNodeRR(RL* rl, Process* p) {
 
 // add all available nodes to ready list
 void addAllNodesRR(RL* rl, Process** processes, int num_processes, int time, int curr_pid) {
-
-    printList(rl);
 
     for (int i = 0; i < num_processes; i++) {
 
