@@ -28,7 +28,7 @@ typedef struct Process {
 
 // for ready list
 typedef struct Node {
-    Process process;
+    Process* process; // a pointer to a process
     struct Node* next;
 } Node;
 
@@ -38,21 +38,21 @@ typedef struct RL {
 } RL;
 
 // FUNCTION PROTOTYPES
-void fcfs(Process* processes, int num_processes);
-void sjf(RL* rl, Process* processes, int num_processes);
+void fcfs(Process** processes, int num_processes);
+void sjf(RL* rl, Process** processes, int num_processes);
 
 int processDiff(const void *p1, const void *p2);
-void printProcesses(Process* processes, int num_processes);
-Process* findProcess(Process* processes, int num_processes, int pid);
+void printProcesses(Process** processes, int num_processes);
+Process* findProcess(Process** processes, int num_processes, int pid);
 
 void initRL(RL* rl);
-void addNode(RL* rl, Process p);
-Process removeNode(RL* rl);
+void addNode(RL* rl, Process* p);
+Process* removeNode(RL* rl);
 int isEmpty(RL* rl);
 void printList(RL* rl);
 
 // SCHEDULE FUNCTION DEFINITIONS
-void fcfs(Process* processes, int num_processes) {
+void fcfs(Process** processes, int num_processes) {
 
     // sort processes by arrival times (asc)
     // uses processDiff as comparison function
@@ -69,14 +69,14 @@ void fcfs(Process* processes, int num_processes) {
     for (int i = 0; i < num_processes; i++) {
         
         // handle process
-        if (processes[i].arrival > time) {
+        if (processes[i]->arrival > time) {
 
             // add idle time
             idle[idle_order] = true;
             idle_order++;
 
             // move time to nearest arrival
-            time = processes[i].arrival;
+            time = processes[i]->arrival;
         }
 
         // add process to gantt order
@@ -84,22 +84,22 @@ void fcfs(Process* processes, int num_processes) {
         idle_order++;
 
         // update process's start time
-        processes[i].start = time;
+        processes[i]->start = time;
 
         // move current time to termination of current process
-        time += processes[i].burst;
+        time += processes[i]->burst;
 
         // compute turnaround time (completion - arrival)
-        processes[i].turnaround = time - processes[i].arrival;
+        processes[i]->turnaround = time - processes[i]->arrival;
 
         // compute waiting time (turnaround - burst)
-        processes[i].waiting = processes[i].turnaround - processes[i].burst;
+        processes[i]->waiting = processes[i]->turnaround - processes[i]->burst;
 
         // update remaining time to 0
-        // processes[i].remaining = 0; // TODO: consider removing for preemptive functions
+        // processes[i]->remaining = 0; // TODO: consider removing for preemptive functions
 
         // update process's completion time
-        processes[i].complete = time;
+        processes[i]->complete = time;
 
     }
 
@@ -109,7 +109,7 @@ void fcfs(Process* processes, int num_processes) {
     for (int i = 0; i < num_processes; i++) {
 
         // print waiting/turnaround times
-        printf("\t %d\t|\t   %d\t\t|\t   %d\n", processes[i].pid, processes[i].waiting, processes[i].turnaround);
+        printf("\t %d\t|\t   %d\t\t|\t   %d\n", processes[i]->pid, processes[i]->waiting, processes[i]->turnaround);
     }
     printf("\n");
 
@@ -119,9 +119,9 @@ void fcfs(Process* processes, int num_processes) {
 
         // print idle time or process lifecycle
         if (idle[i]) {
-            printf("[  %d  ]-----\tIDLE\t-----[  %d  ]\n", processes[i-1].complete, processes[i].start);    
+            printf("[  %d  ]-----\tIDLE\t-----[  %d  ]\n", processes[i-1]->complete, processes[i]->start);    
         }
-        printf("[  %d  ]-----\t%d\t-----[  %d  ]\n", processes[i].start, processes[i].pid, processes[i].complete);
+        printf("[  %d  ]-----\t%d\t-----[  %d  ]\n", processes[i]->start, processes[i]->pid, processes[i]->complete);
     }
     printf("\n");
 
@@ -132,8 +132,8 @@ void fcfs(Process* processes, int num_processes) {
 
     // calculate average turnaround & waiting times
     for (int i = 0; i < num_processes; i++) {
-        avg_turnaround += processes[i].turnaround;
-        avg_waiting += processes[i].waiting;
+        avg_turnaround += processes[i]->turnaround;
+        avg_waiting += processes[i]->waiting;
     }
 
     avg_turnaround /= num_processes;
@@ -147,11 +147,11 @@ void fcfs(Process* processes, int num_processes) {
 }
 
 // Shortest-Remaining-Time
-void sjf(RL* rl, Process* processes, int num_processes) {
+void sjf(RL* rl, Process** processes, int num_processes) {
 
     // sort processes by arrival times (asc)
     // uses processDiff as comparison function
-    qsort(processes, num_processes, sizeof(Process), processDiff);
+    qsort(processes, num_processes, sizeof(Process*), processDiff);
 
     // array to handle gantt timeline (finite)
     int gantt_size = num_processes * 5;
@@ -164,7 +164,7 @@ void sjf(RL* rl, Process* processes, int num_processes) {
     // variables to manage processes and time
     int time = 0;
     int curr_pid = -1;
-    Process p;
+    Process* p = NULL;
 
     // loop while RL isn't empty
     while (1) {
@@ -173,20 +173,20 @@ void sjf(RL* rl, Process* processes, int num_processes) {
         for (int i = 0; i < num_processes; i++) {
 
             // check if process not finished and arrival reached 
-            if (processes[i].arrival <= time && !processes[i].finished && !processes[i].visited) {
+            if (processes[i]->arrival <= time && !processes[i]->finished && !processes[i]->visited) {
                 addNode(rl, processes[i]);
-                processes[i].visited = true;
+                processes[i]->visited = true;
             }
         }
 
         // set curr pid if none running
         if (curr_pid == -1 && !isEmpty(rl)) {
             p = removeNode(rl);
-            curr_pid = p.pid;
-            printf("Process %d started at time %d\n", p.pid, time);
+            curr_pid = p->pid;
+            printf("Process %d started at time %d\n", p->pid, time);
 
             // update process start time
-            p.start = time;
+            p->start = time;
 
             // wrap up gantt idle time if previously idle
             if (gantt_idle) {
@@ -195,7 +195,7 @@ void sjf(RL* rl, Process* processes, int num_processes) {
             }
 
             // add process pid/start to gantt chart (only inc. when preempted/finished)
-            gantt_pid[gantt_i] = p.pid;
+            gantt_pid[gantt_i] = p->pid;
             gantt_start[gantt_i] = time;
 
         }
@@ -207,22 +207,22 @@ void sjf(RL* rl, Process* processes, int num_processes) {
             time++;
 
             // update remaining time of current process
-            p.remaining--;
+            p->remaining--;
 
             // check if process is done
-            if (p.remaining == 0) {
-                p.finished = true;
+            if (p->remaining == 0) {
+                p->finished = true;
                 curr_pid = -1;
-                printf("Process %d finished at time %d\n", p.pid, time);
+                printf("Process %d finished at time %d\n", p->pid, time);
 
                 // update process completion time
-                p.complete = time;
+                p->complete = time;
 
                 // compute process turnaround time (completion - arrival)
-                p.turnaround = time - p.arrival;
+                p->turnaround = time - p->arrival;
 
                 // compute process waiting time (turnaround - burst)
-                p.waiting = p.turnaround - p.burst;
+                p->waiting = p->turnaround - p->burst;
 
                 // add end time to gantt and increment to next gantt event
                 gantt_end[gantt_i++] = time;
@@ -233,14 +233,14 @@ void sjf(RL* rl, Process* processes, int num_processes) {
                 for (int i = 0; i < num_processes; i++) {
 
                     // see if any other processes can trigger preemption
-                    if (processes[i].arrival <= time && !processes[i].finished && !processes[i].visited && \
-                    processes[i].burst < p.remaining)
+                    if (processes[i]->arrival <= time && !processes[i]->finished && !processes[i]->visited && \
+                    processes[i]->burst < p->remaining)
                     {
                         // preempt current process
 
                         // add current process back into ready list
                         addNode(rl, p);
-                        printf("Process %d preempted at time %d\n", p.pid, time);
+                        printf("Process %d preempted at time %d\n", p->pid, time);
 
                         // add local end time to gantt and increment to next gantt event
                         gantt_end[gantt_i++] = time;
@@ -256,7 +256,7 @@ void sjf(RL* rl, Process* processes, int num_processes) {
             // check if all processes have 0 remaining time
             int remaining_time = 0;
             for (int i = 0; i < num_processes; i++) {
-                remaining_time += processes[i].remaining;
+                remaining_time += processes[i]->remaining;
             }
 
             // break loop if no more time remaining for any process
@@ -279,46 +279,46 @@ void sjf(RL* rl, Process* processes, int num_processes) {
 
     }
 
-    // print SJF stats
-    printf("\n---------------------------- SJF ----------------------------\n");
-    printf("\tPID\t|\tWaiting \t|\tTurnaround\n");
-    for (int i = 0; i < num_processes; i++) {
+    // // print SJF stats
+    // printf("\n---------------------------- SJF ----------------------------\n");
+    // printf("\tPID\t|\tWaiting \t|\tTurnaround\n");
+    // for (int i = 0; i < num_processes; i++) {
 
-        // print waiting/turnaround times
-        printf("\t %d\t|\t   %d\t\t|\t   %d\n", processes[i].pid, processes[i].waiting, processes[i].turnaround);
-    }
-    printf("\n");
+    //     // print waiting/turnaround times
+    //     printf("\t %d\t|\t   %d\t\t|\t   %d\n", processes[i]->pid, processes[i]->waiting, processes[i]->turnaround);
+    // }
+    // printf("\n");
 
-    // print gantt chart
-    printf("Gantt Chart:\n");
-    for (int i = 0; i < gantt_i - 1; i++) {
+    // // print gantt chart
+    // printf("Gantt Chart:\n");
+    // for (int i = 0; i < gantt_i - 1; i++) {
 
-        // print idle time or process lifecycle
-        if (gantt_pid[i] == -1) {
-            printf("[  %d  ]-----\tIDLE\t-----[  %d  ]\n", gantt_start[i], gantt_end[i]);    
-        }
-        printf("[  %d  ]-----\t%d\t-----[  %d  ]\n", gantt_start[i], gantt_pid[i], gantt_end[i]);
-    }
-    printf("\n");
+    //     // print idle time or process lifecycle
+    //     if (gantt_pid[i] == -1) {
+    //         printf("[  %d  ]-----\tIDLE\t-----[  %d  ]\n", gantt_start[i], gantt_end[i]);    
+    //     }
+    //     printf("[  %d  ]-----\t%d\t-----[  %d  ]\n", gantt_start[i], gantt_pid[i], gantt_end[i]);
+    // }
+    // printf("\n");
 
-    // vars for time stats
-    double avg_turnaround = 0.0;
-    double avg_waiting = 0.0;
-    double throughput = (double) num_processes / time;
+    // // vars for time stats
+    // double avg_turnaround = 0.0;
+    // double avg_waiting = 0.0;
+    // double throughput = (double) num_processes / time;
 
-    // calculate average turnaround & waiting times
-    for (int i = 0; i < num_processes; i++) {
-        avg_turnaround += processes[i].turnaround;
-        avg_waiting += processes[i].waiting;
-    }
+    // // calculate average turnaround & waiting times
+    // for (int i = 0; i < num_processes; i++) {
+    //     avg_turnaround += processes[i]->turnaround;
+    //     avg_waiting += processes[i]->waiting;
+    // }
 
-    avg_turnaround /= num_processes;
-    avg_waiting /= num_processes;
+    // avg_turnaround /= num_processes;
+    // avg_waiting /= num_processes;
 
-    // display overall schedule stats
-    printf("Avg. Waiting Time: %f\n", avg_waiting);
-    printf("Avg. Turnaround: %f\n", avg_turnaround);
-    printf("Throughput: %f\n\n", throughput);
+    // // display overall schedule stats
+    // printf("Avg. Waiting Time: %f\n", avg_waiting);
+    // printf("Avg. Turnaround: %f\n", avg_turnaround);
+    // printf("Throughput: %f\n\n", throughput);
 
 }
 
@@ -339,21 +339,21 @@ int processDiff(const void *p1, const void *p2) {
 }
 
 // print general info about processes
-void printProcesses(Process* processes, int num_processes) {
+void printProcesses(Process** processes, int num_processes) {
 
     printf("\n\tPID \t|\tARRIV \t|\tBURST \t|\tPRIOR \t|\tQUANT \t|\tREMAIN \t|\tWAIT \t|\tTURN\n");
     printf("--------------------------------------------------------------------------------------------------------------------------------\n");
 
     for (int j = 0; j < num_processes; j++) {
         printf("\t%d\t|\t%d\t|\t%d\t|\t%d\t|\t%d\t|\t%d\t|\t%d\t|\t%d\n", \
-            processes[j].pid,
-            processes[j].arrival,
-            processes[j].burst,
-            processes[j].priority,
-            processes[j].quantum,
-            processes[j].remaining,
-            processes[j].waiting,
-            processes[j].turnaround
+            processes[j]->pid,
+            processes[j]->arrival,
+            processes[j]->burst,
+            processes[j]->priority,
+            processes[j]->quantum,
+            processes[j]->remaining,
+            processes[j]->waiting,
+            processes[j]->turnaround
         );
     }
     printf("\n");
@@ -361,10 +361,10 @@ void printProcesses(Process* processes, int num_processes) {
 }
  
 // find process object reference by pid
-Process* findProcess(Process* processes, int num_processes, int pid) {
+Process* findProcess(Process** processes, int num_processes, int pid) {
     for (int i = 0; i < num_processes; i++) {
-        if (processes[i].pid == pid) {
-            return &processes[i];
+        if (processes[i]->pid == pid) {
+            return processes[i];
         }
     }
     
@@ -381,25 +381,25 @@ void initRL(RL* rl) {
 }
 
 // add a node to the ready list (node->process)
-void addNode(RL* rl, Process p) {
+void addNode(RL* rl, Process* p) {
 
     // alloc mem for new node
     Node* node = (Node*) malloc (sizeof(Node));
 
     // set new node's info
-    node->process = p;
+    node->process = p; // node->process is a pointer to a process
     node->next = NULL;
 
-    if (isEmpty(rl) || p.remaining < rl->head->process.remaining) {
+    if (isEmpty(rl) || p->remaining < rl->head->process->remaining) {
         node->next = rl->head;
         rl->head = node;
     } else {
 
         Node* curr = rl->head;
 
-        // find end of list
-        if (!p.visited) {
-            while (curr->next != NULL && curr->next->process.remaining < p.remaining) {
+        // find end of list TODO: consider fixing this to be simpler
+        if (!p->visited) {
+            while (curr->next != NULL && curr->next->process->remaining < p->remaining) {
                 curr = curr->next;
             }
         } else {
@@ -422,7 +422,7 @@ int isEmpty(RL* rl) {
 }
 
 // remove node from ready list (FIFO)
-Process removeNode(RL* rl) {
+Process* removeNode(RL* rl) {
     
     // check if RL has any processes
     if (isEmpty(rl)) {
@@ -437,7 +437,7 @@ Process removeNode(RL* rl) {
     rl->head = rl->head->next;
 
     // save process associated with node
-    Process p = node->process;
+    Process* p = node->process;
 
     // deallocate node from mem
     free(node);
@@ -460,7 +460,7 @@ void printList(RL* rl) {
     
     // print PIDs currently in ready list
     while (node != NULL) {
-        printf("%d ", node->process.pid);
+        printf("%d ", node->process->pid);
         node = node->next;
     }
     printf("\n");
@@ -481,7 +481,7 @@ int main(int argc, char* argv[]) {
     const char comma[] = ",";
 
     // declare process vars
-    Process* processes;
+    Process** processes;
     int num_processes = 0;
 
     // open file for reading
@@ -502,7 +502,7 @@ int main(int argc, char* argv[]) {
     fseek(file_ptr, 0, SEEK_SET);
 
     // dynamically allocate memory for list of processes
-    processes = (Process*) malloc (num_processes * sizeof(Process));
+    processes = (Process**) malloc(num_processes * sizeof(Process*));
 
     // check if error occurred while allocating mem
     if (processes == NULL) {
@@ -516,16 +516,16 @@ int main(int argc, char* argv[]) {
 
         // create process object with line info 
         sscanf(ln, "%d,%d,%d,%d,%d",
-            &(processes)[j].pid,
-            &(processes)[j].arrival,
-            &(processes)[j].burst,
-            &(processes)[j].priority,
-            &(processes)[j].quantum);
+            &(processes[j]->pid),
+            &(processes[j]->arrival),
+            &(processes[j]->burst),
+            &(processes[j]->priority),
+            &(processes[j]->quantum));
 
         // set engineered process info
-        processes[j].remaining = processes[j].burst;
-        processes[j].waiting = 0;
-        processes[j].turnaround = 0;
+        processes[j]->remaining = processes[j]->burst;
+        processes[j]->waiting = 0;
+        processes[j]->turnaround = 0;
 
         // increment to next process slot in process list
         j++;
