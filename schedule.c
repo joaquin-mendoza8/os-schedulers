@@ -40,6 +40,7 @@ typedef struct RL {
 // FUNCTION PROTOTYPES
 void fcfs(Process** processes, int num_processes);
 void sjf(RL* rl, Process** processes, int num_processes);
+void ps(RL* rl, Process** processes, int num_processes);
 void rr(RL* rl, Process** processes, int num_processes, int quantum);
 
 int processDiff(const void *p1, const void *p2);
@@ -62,9 +63,12 @@ void fcfs(Process** processes, int num_processes) {
     // uses processDiff as comparison function
     qsort(processes, num_processes, sizeof(Process*), processDiff);
 
-    // array to handle gantt idle-times (max possible)
-    bool idle[num_processes * 2 - 1];
-    int idle_order = 0;
+    // array to handle gantt timeline (finite)
+    int gantt_size = num_processes * 2;
+    int gantt_pid[gantt_size];  // track pids in timeline
+    int gantt_start[gantt_size];    // track pid local start
+    int gantt_end[gantt_size];  // track pid local end
+    int gantt_i = 0;
 
     // variable to represent schedule's current time
     int time = 0;
@@ -72,26 +76,32 @@ void fcfs(Process** processes, int num_processes) {
     // loop thru all processes
     for (int i = 0; i < num_processes; i++) {
         
-        // handle process
+        // handle idle time
         if (processes[i]->arrival > time) {
 
-            // add idle time
-            idle[idle_order] = true;
-            idle_order++;
+            // add idle time to gantt
+            gantt_pid[gantt_i] = processes[i]->pid;
+            gantt_start[gantt_i] = time;
 
             // move time to nearest arrival
             time = processes[i]->arrival;
+
+            // update gantt end time
+            gantt_end[gantt_i++] = time;
         }
 
-        // add process to gantt order TODO: shorten with [++]
-        idle[idle_order] = false;
-        idle_order++;
+        // add process to gantt order
+        gantt_pid[gantt_i] = processes[i]->pid;
+        gantt_start[gantt_i] = time;
 
         // update process's start time
         processes[i]->start = time;
 
         // move current time to termination of current process
         time += processes[i]->burst;
+
+        // update gantt end time
+        gantt_end[gantt_i++] = time;
 
         // compute turnaround time (completion - arrival)
         processes[i]->turnaround = time - processes[i]->arrival;
@@ -116,10 +126,10 @@ void fcfs(Process** processes, int num_processes) {
 
     // print gantt chart
     printf("Gantt Chart:\n");
-    for (int i = 0; i < idle_order - 1; i++) {
+    for (int i = 0; i < gantt_i; i++) {
 
         // print idle time or process lifecycle
-        if (idle[i]) {
+        if (gantt_pid[i] == -1) {
 
             int prev_complete;
 
@@ -130,9 +140,9 @@ void fcfs(Process** processes, int num_processes) {
                 prev_complete = 0;
             }
             
-            printf("[  %d  ]-----\tIDLE\t-----[  %d  ]\n", prev_complete, processes[i]->start);    
+            printf("[  %d  ]-----\tIDLE\t-----[  %d  ]\n", gantt_start[i], gantt_end[i]);    
         }
-        printf("[  %d  ]-----\t%d\t-----[  %d  ]\n", processes[i]->start, processes[i]->pid, processes[i]->complete);
+        printf("[  %d  ]-----\t%d\t-----[  %d  ]\n", gantt_start[i], gantt_pid[i], gantt_end[i]);
     }
     printf("\n");
 
@@ -154,6 +164,8 @@ void fcfs(Process** processes, int num_processes) {
     printf("Avg. Waiting Time: %f\n", avg_waiting);
     printf("Avg. Turnaround: %f\n", avg_turnaround);
     printf("Throughput: %f\n\n", throughput);
+
+    time = 0;
 
 }
 
@@ -360,6 +372,169 @@ void sjf(RL* rl, Process** processes, int num_processes) {
     printf("Avg. Turnaround: %f\n", avg_turnaround);
     printf("Throughput: %f\n\n", throughput);
 
+    time = 0;
+
+}
+
+// Priority Scheduling (w/o preemption)
+void ps(RL* rl, Process** processes, int num_processes) {
+
+    // reset all process fields to default
+    wipeProcessTimes(processes, num_processes);
+
+    // sort processes by arrival times (asc)
+    // uses processDiff as comparison function
+    qsort(processes, num_processes, sizeof(Process*), processDiff);
+
+    // array to handle gantt timeline (finite)
+    int gantt_size = num_processes * 2;
+    int gantt_pid[gantt_size];  // track pids in timeline
+    int gantt_start[gantt_size];    // track pid local start
+    int gantt_end[gantt_size];  // track pid local end
+    int gantt_i = 0;
+    bool gantt_idle = false;    // flag to detect if idle occurs
+
+    // var to track time
+    int time = 0;
+
+    // var to track num finished processes
+    int completed = 0;
+
+    // var to hold running process
+    Process* p = NULL;
+
+    // loop until all processes are done
+    while (completed < num_processes) {
+
+        // vars to track process with the highest priority
+        int top_priority = 100000;
+        int top_i = -1;
+
+        // loop thru all processes
+        for (int i = 0; i < num_processes; i++) {
+
+            // check if process can be added to RL
+            if (processes[i]->arrival <= time && !processes[i]->finished) {
+
+                // compare priority
+                if (processes[i]->priority < top_priority) {
+
+                    // set new top priority
+                    top_priority = processes[i]->priority;
+                    top_i = i;
+
+                }
+
+            }
+
+        }
+
+        // if top priority process exists, handle it
+        if (top_i != -1) {
+
+            // wrap up idle
+            if (gantt_idle) {
+
+                gantt_end[gantt_i++] = time;
+                gantt_idle = false;
+
+            }
+
+            // get top priority process
+            Process* p = processes[top_i];
+
+            // check if memory allocated properly
+            if (p == NULL) {
+                printf("ERROR allocating memory for process in PS\n");
+                exit(1);
+            }
+
+            // update gantt
+            gantt_pid[gantt_i] = p->pid;
+            gantt_start[gantt_i] = time;
+
+            // update number of completed processes
+            completed++;
+
+            // update process start time
+            p->start = time;
+
+            // update time by process burst
+            time += p->burst;
+
+            // update process completion time
+            p->complete = time;
+
+            // calculate process turnaround and waiting times
+            p->turnaround = time - p->arrival;
+            p->waiting = p->turnaround - p->burst;
+
+            // update process finished flag
+            p->finished = true;
+
+            // update gantt chart
+            gantt_end[gantt_i++] = time;
+
+        // if no process, idle
+        } else {
+
+            // update gantt chart (idle pid = -1)
+            if(!gantt_idle) {
+                gantt_start[gantt_i] = time;
+            }
+            gantt_pid[gantt_i] = -1;
+            gantt_idle = true;
+
+            // update time
+            time++;
+
+        }
+
+    }
+
+    // print PS stats
+    printf("\n---------------------------- PS ----------------------------\n");
+    printf("\tPID\t|\tWaiting \t|\tTurnaround\n");
+    for (int i = 0; i < num_processes; i++) {
+
+        // print waiting/turnaround times
+        printf("\t %d\t|\t   %d\t\t|\t   %d\n", processes[i]->pid, processes[i]->waiting, processes[i]->turnaround);
+    }
+    printf("\n");
+
+    // print gantt chart
+    printf("Gantt Chart:\n");
+    for (int i = 0; i < gantt_i; i++) {
+
+        // print idle time or process lifecycle
+        if (gantt_pid[i] == -1) {
+            printf("[  %d  ]-----\tIDLE\t-----[  %d  ]\n", gantt_start[i], gantt_end[i]);    
+        } else {
+            printf("[  %d  ]-----\t%d\t-----[  %d  ]\n", gantt_start[i], gantt_pid[i], gantt_end[i]);
+        }
+    }
+    printf("\n");
+
+    // vars for time stats
+    double avg_turnaround = 0.0;
+    double avg_waiting = 0.0;
+    double throughput = (double) num_processes / time;
+
+    // calculate average turnaround & waiting times
+    for (int i = 0; i < num_processes; i++) {
+        avg_turnaround += processes[i]->turnaround;
+        avg_waiting += processes[i]->waiting;
+    }
+
+    avg_turnaround /= num_processes;
+    avg_waiting /= num_processes;
+
+    // display overall schedule stats
+    printf("Avg. Waiting Time: %f\n", avg_waiting);
+    printf("Avg. Turnaround: %f\n", avg_turnaround);
+    printf("Throughput: %f\n\n", throughput);
+
+
 }
 
 // Round Robin
@@ -368,6 +543,7 @@ void rr(RL* rl, Process** processes, int num_processes, int quantum) {
     // exit if quantum is invalid
     if (quantum <= 0) {
         printf("Error invalid quantum: %d\n", quantum);
+        exit(1);
     }
 
     // reset all process info to default
@@ -382,7 +558,7 @@ void rr(RL* rl, Process** processes, int num_processes, int quantum) {
     int completed = 0;
 
     // vars for gantt
-    int gantt_size = num_processes * 6;
+    int gantt_size = num_processes * 8;
     int gantt_pid[gantt_size];  // track pids in timeline
     int gantt_start[gantt_size];    // track pid local start
     int gantt_end[gantt_size];  // track pid local end
@@ -529,7 +705,6 @@ void rr(RL* rl, Process** processes, int num_processes, int quantum) {
     }
     printf("\n");
 
-
     // vars for time stats
     double avg_turnaround = 0.0;
     double avg_waiting = 0.0;
@@ -553,6 +728,8 @@ void rr(RL* rl, Process** processes, int num_processes, int quantum) {
 }
 
 // HELPER FUNCTION DEFINITIONS
+
+// helper to compare process arrival/pid for sorting
 int processDiff(const void *p1, const void *p2) {
 
     // convert process ptrs to processes
@@ -850,10 +1027,13 @@ int main(int argc, char* argv[]) {
     // CALL SCHEDULE FUNCTIONS
 
     // run First-Come-First-Serve on file info
-    // fcfs(processes, num_processes);
+    fcfs(processes, num_processes);
 
     // run Shortest-Remaining-Time on file info
-    // sjf(rl, processes, num_processes);
+    sjf(rl, processes, num_processes);
+
+    // run Priority Scheduling
+    ps(rl, processes, num_processes);
 
     // run Round-Robin on file info
     int quantum = processes[0]->quantum;

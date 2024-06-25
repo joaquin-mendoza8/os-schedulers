@@ -10,7 +10,7 @@ all:
 # @read -p "File name: " file; \
 # ./schedule $$file
 
-	@./schedule test1.txt
+	@./schedule test3.txt
 
 # delete the executable
 clean:
