@@ -50,7 +50,7 @@ Process* findProcess(Process** processes, int num_processes, int pid);
 void initRL(RL* rl);
 void addNode(RL* rl, Process* p);
 void addNodeRR(RL* rl, Process* p);
-void addAllNodesRR(RL* rl, Process** processes, int num_processes, int time, int curr_pid);
+void addAllNodesRR(RL* rl, Process** processes, int num_processes, int time);
 Process* removeNode(RL* rl);
 int isEmpty(RL* rl);
 void printList(RL* rl);
@@ -80,7 +80,7 @@ void fcfs(Process** processes, int num_processes) {
         if (processes[i]->arrival > time) {
 
             // add idle time to gantt
-            gantt_pid[gantt_i] = processes[i]->pid;
+            gantt_pid[gantt_i] = -1;    // idle pid = -1
             gantt_start[gantt_i] = time;
 
             // move time to nearest arrival
@@ -130,19 +130,10 @@ void fcfs(Process** processes, int num_processes) {
 
         // print idle time or process lifecycle
         if (gantt_pid[i] == -1) {
-
-            int prev_complete;
-
-            // set previously completed process
-            if (i > 0) {
-                prev_complete = processes[i-1]->complete;
-            } else {
-                prev_complete = 0;
-            }
-            
             printf("[  %d  ]-----\tIDLE\t-----[  %d  ]\n", gantt_start[i], gantt_end[i]);    
+        } else {
+            printf("[  %d  ]-----\t%d\t-----[  %d  ]\n", gantt_start[i], gantt_pid[i], gantt_end[i]);
         }
-        printf("[  %d  ]-----\t%d\t-----[  %d  ]\n", gantt_start[i], gantt_pid[i], gantt_end[i]);
     }
     printf("\n");
 
@@ -189,11 +180,12 @@ void sjf(RL* rl, Process** processes, int num_processes) {
 
     // variables to manage processes and time
     int time = 0;
+    int completed = 0;
     int curr_pid = -1;
     Process* p = NULL;
 
     // loop while RL isn't empty
-    while (1) {
+    while (completed < num_processes) {
 
         // add processes to RL
         for (int i = 0; i < num_processes; i++) {
@@ -209,8 +201,14 @@ void sjf(RL* rl, Process** processes, int num_processes) {
             }
         }
 
-        // set curr pid if none running
+        // handle process if RL not empty
         if (curr_pid == -1 && !isEmpty(rl)) {
+
+            // wrap up gantt idle time if previously idle
+            if (gantt_idle) {
+                gantt_idle = false;
+                gantt_end[gantt_i++] = time;
+            }
 
             // remove next node from ready list
             p = removeNode(rl);
@@ -222,12 +220,6 @@ void sjf(RL* rl, Process** processes, int num_processes) {
             // update process start time
             if (!p->visited) {
                 p->start = time;
-            }
-
-            // wrap up gantt idle time if previously idle
-            if (gantt_idle) {
-                gantt_idle = false;
-                gantt_end[gantt_i++] = time;
             }
 
             // add process pid/start to gantt chart (only inc. when preempted/finished)
@@ -243,7 +235,7 @@ void sjf(RL* rl, Process** processes, int num_processes) {
             time++;
 
             // update remaining time of current process
-            p->remaining--;
+            p->remaining -= 1;
 
             // check if process is done
             if (p->remaining == 0) {
@@ -267,6 +259,10 @@ void sjf(RL* rl, Process** processes, int num_processes) {
                 // add end time to gantt and increment to next gantt event
                 gantt_end[gantt_i++] = time;
 
+                // update completed processes count
+                completed++;
+
+            // process not done, check preemption
             } else {
 
                 // check if preemption available
@@ -292,28 +288,19 @@ void sjf(RL* rl, Process** processes, int num_processes) {
                     }
                 }
             }
+
+        // idle
         } else {
 
-            // add all remaining times of processes
-            int remaining_time = 0;
-            for (int i = 0; i < num_processes; i++) {
-                remaining_time += processes[i]->remaining;
+            // update gantt start/pid (idle = -1)
+            if (!gantt_idle) {
+                gantt_start[gantt_i] = time;
+                gantt_pid[gantt_i] = -1;
             }
 
-            // break loop if no more time remaining for any process
-            if (remaining_time == 0) {
-                break;
-            }
-
-            // add idle time to gantt timeline
-            gantt_pid[gantt_i] = -1;   // -1 is idle's pid
-            gantt_start[gantt_i] = time;
-
-            // trigger idle flag for proper gantt end-time
+            // toggle gantt idle flag
             gantt_idle = true;
 
-            // simulate idle time if no processes running but processes remain
-            // printf("Idle at time %d\n", time);
             time++;
 
         }
@@ -336,19 +323,10 @@ void sjf(RL* rl, Process** processes, int num_processes) {
 
         // print idle time or process lifecycle
         if (gantt_pid[i] == -1) {
-
-            int prev_complete;
-
-            // set previously completed process
-            if (i > 0) {
-                prev_complete = processes[i-1]->complete;
-            } else {
-                prev_complete = 0;
-            }
-            
             printf("[  %d  ]-----\tIDLE\t-----[  %d  ]\n", gantt_start[i], gantt_end[i]);    
+        } else {
+            printf("[  %d  ]-----\t%d\t-----[  %d  ]\n", gantt_start[i], gantt_pid[i], gantt_end[i]);
         }
-        printf("[  %d  ]-----\t%d\t-----[  %d  ]\n", gantt_start[i], gantt_pid[i], gantt_end[i]);
     }
     printf("\n");
 
@@ -371,8 +349,6 @@ void sjf(RL* rl, Process** processes, int num_processes) {
     printf("Avg. Waiting Time: %f\n", avg_waiting);
     printf("Avg. Turnaround: %f\n", avg_turnaround);
     printf("Throughput: %f\n\n", throughput);
-
-    time = 0;
 
 }
 
@@ -606,22 +582,23 @@ void rr(RL* rl, Process** processes, int num_processes, int quantum) {
                 time += quantum;
 
                 // update gantt end
+                gantt_end[gantt_i++] = time;
 
-                // aggregate to long run
-                if (gantt_i != 0 && gantt_pid[gantt_i - 1] == p->pid) {
+                // // aggregate process time fragment (redacted)
+                // if (gantt_i != 0 && gantt_pid[gantt_i - 1] == p->pid) {
 
-                    // update prev gantt entry's end time to now
-                    gantt_end[gantt_i - 1] = time;
+                //     // update prev gantt entry's end time to now
+                //     gantt_end[gantt_i - 1] = time;
 
-                } else {
-                    gantt_end[gantt_i++] = time;   
-                }
+                // } else {
+                //     gantt_end[gantt_i++] = time;   
+                // }
 
                 // update process's remaining time
                 p->remaining -= quantum;
 
                 // add all nodes that became available between quantum change
-                addAllNodesRR(rl, processes, num_processes, time, p->pid);
+                addAllNodesRR(rl, processes, num_processes, time);
 
                 // put process back into ready list
                 addNodeRR(rl, p);
@@ -637,16 +614,17 @@ void rr(RL* rl, Process** processes, int num_processes, int quantum) {
                 time += p->remaining;
 
                 // update gantt end
+                gantt_end[gantt_i++] = time;
 
-                // aggregate to long run
-                if (gantt_i != 0 && gantt_pid[gantt_i - 1] == p->pid) {
+                // // aggregate process time fragment (redacted)
+                // if (gantt_i != 0 && gantt_pid[gantt_i - 1] == p->pid) {
 
-                    // update prev gantt entry's end time to now
-                    gantt_end[gantt_i - 1] = time;
+                //     // update prev gantt entry's end time to now
+                //     gantt_end[gantt_i - 1] = time;
                     
-                } else {
-                    gantt_end[gantt_i++] = time;   
-                }
+                // } else {
+                //     gantt_end[gantt_i++] = time;   
+                // }
 
                 // update process's remaining time
                 p->remaining = 0;
@@ -855,7 +833,7 @@ void addNodeRR(RL* rl, Process* p) {
 }
 
 // add all available nodes to ready list
-void addAllNodesRR(RL* rl, Process** processes, int num_processes, int time, int curr_pid) {
+void addAllNodesRR(RL* rl, Process** processes, int num_processes, int time) {
 
     for (int i = 0; i < num_processes; i++) {
 
